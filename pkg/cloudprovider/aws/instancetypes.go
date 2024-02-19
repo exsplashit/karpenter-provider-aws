@@ -62,7 +62,13 @@ type InstanceTypeProvider struct {
 	cm                   *pretty.ChangeMonitor
 }
 
-func NewInstanceTypeProvider(ctx context.Context, sess *session.Session, options cloudprovider.Options, ec2api ec2iface.EC2API, subnetProvider *SubnetProvider) *InstanceTypeProvider {
+func NewInstanceTypeProvider(
+	ctx context.Context,
+	sess *session.Session,
+	options cloudprovider.Options,
+	ec2api ec2iface.EC2API,
+	subnetProvider *SubnetProvider,
+) *InstanceTypeProvider {
 	return &InstanceTypeProvider{
 		ec2api:         ec2api,
 		region:         *sess.Config.Region,
@@ -79,7 +85,11 @@ func NewInstanceTypeProvider(ctx context.Context, sess *session.Session, options
 }
 
 // Get all instance type options
-func (p *InstanceTypeProvider) Get(ctx context.Context, provider *v1alpha1.AWS, kc *v1alpha5.KubeletConfiguration) ([]cloudprovider.InstanceType, error) {
+func (p *InstanceTypeProvider) Get(
+	ctx context.Context,
+	provider *v1alpha1.AWS,
+	kc *v1alpha5.KubeletConfiguration,
+) ([]cloudprovider.InstanceType, error) {
 	p.Lock()
 	defer p.Unlock()
 	// Get InstanceTypes from EC2
@@ -96,7 +106,14 @@ func (p *InstanceTypeProvider) Get(ctx context.Context, provider *v1alpha1.AWS, 
 
 	for _, i := range instanceTypes {
 		instanceTypeName := aws.StringValue(i.InstanceType)
-		instanceType := NewInstanceType(ctx, i, kc, p.region, provider, p.createOfferings(ctx, i, instanceTypeZones[instanceTypeName]))
+		instanceType := NewInstanceType(
+			ctx,
+			i,
+			kc,
+			p.region,
+			provider,
+			p.createOfferings(ctx, i, instanceTypeZones[instanceTypeName]),
+		)
 		result = append(result, instanceType)
 	}
 	return result, nil
@@ -115,13 +132,19 @@ func (p *InstanceTypeProvider) LivenessProbe(req *http.Request) error {
 	return nil
 }
 
-func (p *InstanceTypeProvider) createOfferings(ctx context.Context, instanceType *ec2.InstanceTypeInfo, zones sets.String) []cloudprovider.Offering {
+func (p *InstanceTypeProvider) createOfferings(
+	ctx context.Context,
+	instanceType *ec2.InstanceTypeInfo,
+	zones sets.String,
+) []cloudprovider.Offering {
 	offerings := []cloudprovider.Offering{}
 	for zone := range zones {
 		// while usage classes should be a distinct set, there's no guarantee of that
 		for capacityType := range sets.NewString(aws.StringValueSlice(instanceType.SupportedUsageClasses)...) {
 			// exclude any offerings that have recently seen an insufficient capacity error from EC2
-			_, isUnavailable := p.unavailableOfferings.Get(UnavailableOfferingsCacheKey(*instanceType.InstanceType, zone, capacityType))
+			_, isUnavailable := p.unavailableOfferings.Get(
+				UnavailableOfferingsCacheKey(*instanceType.InstanceType, zone, capacityType),
+			)
 			var price float64
 			var ok bool
 			switch capacityType {
@@ -129,8 +152,11 @@ func (p *InstanceTypeProvider) createOfferings(ctx context.Context, instanceType
 				price, ok = p.pricingProvider.SpotPrice(*instanceType.InstanceType, zone)
 			case ec2.UsageClassTypeOnDemand:
 				price, ok = p.pricingProvider.OnDemandPrice(*instanceType.InstanceType)
+			case "capacity-block":
+				continue
 			default:
-				logging.FromContext(ctx).Errorf("Received unknown capacity type %s for instance type %s", capacityType, *instanceType.InstanceType)
+				logging.FromContext(ctx).
+					Errorf("Received unknown capacity type %s for instance type %s", capacityType, *instanceType.InstanceType)
 				continue
 			}
 			available := !isUnavailable && ok
@@ -145,8 +171,15 @@ func (p *InstanceTypeProvider) createOfferings(ctx context.Context, instanceType
 	return offerings
 }
 
-func (p *InstanceTypeProvider) getInstanceTypeZones(ctx context.Context, provider *v1alpha1.AWS) (map[string]sets.String, error) {
-	subnetSelectorHash, err := hashstructure.Hash(provider.SubnetSelector, hashstructure.FormatV2, nil)
+func (p *InstanceTypeProvider) getInstanceTypeZones(
+	ctx context.Context,
+	provider *v1alpha1.AWS,
+) (map[string]sets.String, error) {
+	subnetSelectorHash, err := hashstructure.Hash(
+		provider.SubnetSelector,
+		hashstructure.FormatV2,
+		nil,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash the subnet selector: %w", err)
 	}
@@ -181,14 +214,17 @@ func (p *InstanceTypeProvider) getInstanceTypeZones(ctx context.Context, provide
 		return nil, fmt.Errorf("describing instance type zone offerings, %w", err)
 	}
 	if p.cm.HasChanged("zonal-offerings", provider.SubnetSelector) {
-		logging.FromContext(ctx).Debugf("Discovered EC2 instance types zonal offerings for subnets %s", pretty.Concise(provider.SubnetSelector))
+		logging.FromContext(ctx).
+			Debugf("Discovered EC2 instance types zonal offerings for subnets %s", pretty.Concise(provider.SubnetSelector))
 	}
 	p.cache.SetDefault(cacheKey, instanceTypeZones)
 	return instanceTypeZones, nil
 }
 
 // getInstanceTypes retrieves all instance types from the ec2 DescribeInstanceTypes API using some opinionated filters
-func (p *InstanceTypeProvider) getInstanceTypes(ctx context.Context) (map[string]*ec2.InstanceTypeInfo, error) {
+func (p *InstanceTypeProvider) getInstanceTypes(
+	ctx context.Context,
+) (map[string]*ec2.InstanceTypeInfo, error) {
 	if cached, ok := p.cache.Get(InstanceTypesCacheKey); ok {
 		return cached.(map[string]*ec2.InstanceTypeInfo), nil
 	}
@@ -238,17 +274,25 @@ func (p *InstanceTypeProvider) filter(instanceType *ec2.InstanceTypeInfo) bool {
 
 // CacheUnavailable allows the InstanceProvider to communicate recently observed temporary capacity shortages in
 // the provided offerings
-func (p *InstanceTypeProvider) CacheUnavailable(ctx context.Context, fleetErr *ec2.CreateFleetError, capacityType string) {
+func (p *InstanceTypeProvider) CacheUnavailable(
+	ctx context.Context,
+	fleetErr *ec2.CreateFleetError,
+	capacityType string,
+) {
 	instanceType := aws.StringValue(fleetErr.LaunchTemplateAndOverrides.Overrides.InstanceType)
 	zone := aws.StringValue(fleetErr.LaunchTemplateAndOverrides.Overrides.AvailabilityZone)
-	logging.FromContext(ctx).Debugf("%s for offering { instanceType: %s, zone: %s, capacityType: %s }, avoiding for %s",
-		aws.StringValue(fleetErr.ErrorCode),
-		instanceType,
-		zone,
-		capacityType,
-		UnfulfillableCapacityErrorCacheTTL)
+	logging.FromContext(ctx).
+		Debugf("%s for offering { instanceType: %s, zone: %s, capacityType: %s }, avoiding for %s",
+			aws.StringValue(fleetErr.ErrorCode),
+			instanceType,
+			zone,
+			capacityType,
+			UnfulfillableCapacityErrorCacheTTL)
 	// even if the key is already in the cache, we still need to call Set to extend the cached entry's TTL
-	p.unavailableOfferings.SetDefault(UnavailableOfferingsCacheKey(instanceType, zone, capacityType), struct{}{})
+	p.unavailableOfferings.SetDefault(
+		UnavailableOfferingsCacheKey(instanceType, zone, capacityType),
+		struct{}{},
+	)
 }
 
 func UnavailableOfferingsCacheKey(instanceType string, zone string, capacityType string) string {
