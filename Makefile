@@ -82,8 +82,8 @@ setup: ## Sets up the IAM roles needed prior to deploying the karpenter-controll
 	CLUSTER_NAME=${CLUSTER_NAME} ./$(GETTING_STARTED_SCRIPT_DIR)/add-roles.sh $(KARPENTER_VERSION)
 
 build: ## Build the Karpenter controller and webhook images using ko build
-	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) ko build -B github.com/aws/karpenter/cmd/controller))
-	$(eval WEBHOOK_IMG=$(shell $(WITH_GOFLAGS) ko build -B github.com/aws/karpenter/cmd/webhook))
+	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) ko build --push false -B github.com/aws/karpenter/cmd/controller))
+	$(eval WEBHOOK_IMG=$(shell $(WITH_GOFLAGS) ko build --push false -B github.com/aws/karpenter/cmd/webhook))
 
 apply: build ## Deploy the controller from the current state of your git repository into your ~/.kube/config cluster
 	helm upgrade --install karpenter charts/karpenter --namespace karpenter \

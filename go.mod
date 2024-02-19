@@ -1,4 +1,4 @@
-module github.com/aws/karpenter
+module github.com/exsplashit/karpenter-provider-aws
 
 go 1.19
 
@@ -101,3 +101,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/aws/karpenter => github.com/exsplashit/karpenter-provider-aws v0.16.3-fix
