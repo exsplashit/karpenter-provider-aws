@@ -6,6 +6,7 @@ require (
 	github.com/Pallinder/go-randomdata v1.2.0
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/aws/aws-sdk-go v1.44.91
+	github.com/aws/karpenter v0.0.0-00010101000000-000000000000
 	github.com/deckarep/golang-set v1.8.0
 	github.com/go-logr/logr v1.2.2
 	github.com/go-logr/zapr v1.2.3
@@ -102,4 +103,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/aws/karpenter => github.com/exsplashit/karpenter-provider-aws v0.16.3-fix
+replace github.com/aws/karpenter => ../karpenter-provider-aws
